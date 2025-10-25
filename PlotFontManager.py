@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-#
 # MIT License
 #
 # Copyright (c) 2025 Hiroki Funashima
@@ -11,8 +10,8 @@
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 #
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
 #
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -21,50 +20,59 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
 import os
+import json
 import matplotlib.font_manager as fm
 from matplotlib import rcParams
 
 
 class PlotFontManager:
     """
-    Small utility class to manage and apply custom fonts in matplotlib.
+    PlotFontManager
+    ----------------
+    A tiny helper to consistently apply custom / local fonts in matplotlib.
 
-    This class lets you:
-    - Map readable font names (e.g. "Futura ND Book") to actual font files.
-    - Register those fonts with matplotlib at runtime.
-    - Set rcParams["font.family"] to consistently use that font in all plots.
-    - Retrieve FontProperties objects for per-label overrides.
+    Features:
+    - Map human-friendly logical names
+       (e.g. "Futura ND Book") to actual font files.
+    - Dynamically register those fonts with matplotlib at runtime.
+    - Update rcParams to use that font globally.
+    - Provide FontProperties objects for per-label
+      overrides in multilingual plots.
 
-    Typical usage:
-        pfm = PlotFontManager()
-        pfm.set_font("Futura ND Book")
+    Optional extension:
+    If a file named `pfm.json` exists in the same directory as this module
+    (plot_font_manager.py), its contents will be merged into/override the
+    built-in font_map. This allows teams/labs to customize font mappings
+    without editing the Python source.
 
-        import matplotlib.pyplot as plt
-        plt.plot([0, 1, 2], [2, 1, 3])
-        plt.title("Demo figure using Futura ND Book")
-        plt.xlabel("time [s]")
-        plt.ylabel("response")
-        plt.show()
-
-    Author:
-        Hiroki Funashima (2025)
-
-    Parameters
-    ----------
-    font_dir : str
-        Directory where your font files live. Defaults to '/usr/local/share/fonts'.
-    default_font : str
-        Logical font name to fall back to when an unknown name is requested.
-        This should be a key of `self.font_map`.
+    Author: Hiroki Funashima (2025)
     """
 
-    def __init__(self, font_dir="/usr/local/share/fonts", default_font="Helvetica Neue"):
+    def __init__(
+        self,
+        font_dir="/usr/local/share/fonts",
+        default_font="Helvetica Neue",
+        extra_map=None,
+    ):
+        """
+        Parameters
+        ----------
+        font_dir : str
+            Default directory where font files live. Relative filenames in
+            font_map will be joined with this dir. Absolute paths are respected
+            as-is.
+        default_font : str
+            Logical font name to fall back to if a given name isn't found.
+        extra_map : dict or None
+            Optional dict to extend/override `self.font_map` at init time.
+            This has lower priority than pfm.json (pfm.json wins last).
+        """
         self.font_dir = font_dir
         self.default_font = default_font
 
-        # Mapping from logical font names to actual font file names (or absolute paths).
-        # You should edit this dictionary for your own environment / branding.
+        # Built-in baseline mapping.
         self.font_map = {
             "Helvetica Neue": "HelveticaNeue.ttc",
             "Helvetica": "Helvetica.ttc",
@@ -77,60 +85,95 @@ class PlotFontManager:
             "Hiragino": "ヒラギノ角ゴシック W3.ttc",
         }
 
-        # Cache of already-registered fonts.
-        # key: logical name (e.g. "Futura ND Book")
-        # val: internal matplotlib font family name (what rcParams['font.family'] expects)
-        self.loaded_fonts = {}
+        # 1) merge user-provided mapping (if any)
+        if extra_map and isinstance(extra_map, dict):
+            self.font_map.update(extra_map)
 
-        # The currently applied internal font name (what matplotlib "sees")
+        # 2) try to load pfm.json sitting next to this module
+        #    (this is the "lab override" mechanism)
+        self._load_local_json_override()
+
+        # State tracking
+        self.loaded_fonts = {}          # {logical_name: internal_name}
         self.current_internal_name = None
+
+    def _load_local_json_override(self):
+        """
+        Look for pfm.json in the same directory as this module.
+        If found and valid, merge its mapping into self.font_map.
+
+        Expected format in pfm.json:
+        {
+            "Logical Font Name": "filename-or-absolute-path.ttf",
+            "My Lab Sans": "/abs/path/to/CustomSans-Regular.otf"
+        }
+
+        Values can be relative filenames (joined with self.font_dir)
+        or absolute paths.
+        """
+        try:
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            json_path = os.path.join(module_dir, "pfm.json")
+            if not os.path.exists(json_path):
+                return
+
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if isinstance(data, dict):
+                self.font_map.update(data)
+            else:
+                print(
+                    "[PlotFontManager] Warning:\
+                    pfm.json exists but is not a dict; "
+                    "ignoring."
+                )
+
+        except Exception as e:
+            # Soft failure: never kill init because of a bad override file
+            print(f"[PlotFontManager] Warning: failed to load pfm.json: {e}")
 
     def _resolve_path(self, fontname):
         """
-        Resolve a logical font name (e.g. "Futura ND Book") to an actual font file path.
+        Map a logical font name (e.g. 'Futura ND Book')
+        to a real font file path.
 
-        If `fontname` is not found in the font_map, fall back to `self.default_font`.
-
-        Parameters
-        ----------
-        fontname : str
-            Logical font name.
-
-        Returns
-        -------
-        str
-            Absolute path to the font file.
+        If the mapped value is an absolute path, return it as-is.
+        Otherwise, treat it as a filename under self.font_dir.
 
         Raises
         ------
         FileNotFoundError
-            If the resolved font file does not exist.
+            If the resolved path does not exist.
         """
+        # get filename (or absolute path) from font_map.
         fname = self.font_map.get(fontname, self.font_map[self.default_font])
-        font_path = os.path.join(self.font_dir, fname) if not os.path.isabs(fname) else fname
+
+        # If fname is absolute (starts with / or drive letter), just trust it.
+        font_path = (
+            fname if os.path.isabs(fname)
+            else os.path.join(self.font_dir, fname)
+        )
+
         if not os.path.exists(font_path):
-            raise FileNotFoundError(f"[PlotFontManager] Font file not found: {font_path}")
+            raise FileNotFoundError(
+                f"[PlotFontManager] Font file not found: {font_path}"
+            )
         return font_path
 
     def _register_font(self, font_path):
         """
-        Register a font file with matplotlib and return its internal font family name.
+        Register the given font file with matplotlib (if supported by this
+        matplotlib version) and return the internal family name that matplotlib
+        will use for rcParams['font.family'].
 
-        Internally, matplotlib assigns a "family name" string to each font file.
-        We grab that name via FontProperties and later feed it into rcParams['font.family'].
-
-        Parameters
-        ----------
-        font_path : str
-            Absolute path to the font file.
-
-        Returns
-        -------
-        str
-            The internal matplotlib font family name associated with this font file.
+        Notes
+        -----
+        - Calling `addfont()` multiple times on the same file is usually safe.
+        - We then create a FontProperties from this file and ask it for
+          the "internal" family name, which is what matplotlib expects in
+          rcParams['font.family'].
         """
-        # On recent matplotlib, fontManager.addfont() allows dynamic font registration.
-        # Calling it more than once for the same path is generally harmless.
         if hasattr(fm.fontManager, "addfont"):
             fm.fontManager.addfont(font_path)
 
@@ -140,92 +183,66 @@ class PlotFontManager:
 
     def set_font(self, fontname):
         """
-        High-level API to activate a font globally for matplotlib figures.
-
-        What this does:
-        1. Resolve `fontname` -> font path.
-        2. Register that font with matplotlib if needed.
-        3. Update rcParams['font.family'] so all new plots use that font.
-        4. Cache the result so we don't re-register the same file each time.
-
-        Parameters
-        ----------
-        fontname : str
-            Logical font name (must exist in self.font_map, otherwise `default_font` is used).
+        High-level API:
+        - Resolve the physical font file path for `fontname`.
+        - Register it with matplotlib if needed.
+        - Update matplotlib.rcParams to use it globally.
+        - Cache the internal name for inspection.
 
         Returns
         -------
-        str
-            The internal matplotlib font family name that was applied.
+        internal_name : str
+            The name matplotlib will recognize as the active font family.
         """
         font_path = self._resolve_path(fontname)
 
-        # Use cached internal name if already registered.
         if fontname in self.loaded_fonts:
             internal_name = self.loaded_fonts[fontname]
         else:
             internal_name = self._register_font(font_path)
             self.loaded_fonts[fontname] = internal_name
 
-        # Apply to global matplotlib defaults.
-        rcParams['font.family'] = internal_name
-        rcParams['axes.unicode_minus'] = False  # avoid minus sign issues with some fonts
-
-        # Track state.
+        rcParams["font.family"] = internal_name
+        rcParams["axes.unicode_minus"] = False
         self.current_internal_name = internal_name
         return internal_name
 
     def get_current_font(self):
         """
-        Return the currently active internal font name (what matplotlib is using now).
+        Return the internal family name currently set
+        in rcParams['font.family'].
 
         Returns
         -------
         str or None
-            The internal matplotlib font family name currently stored in rcParams,
-            or None if `set_font` has not been called yet.
+            Internal name if `set_font()` has been called, else None.
         """
         return self.current_internal_name
 
     def list_available(self):
         """
-        List all logical font names known to this manager.
+        Return a list of logical font names known to this manager.
 
-        Returns
-        -------
-        list of str
-            Keys of `self.font_map`. This is what you can pass to `set_font()`.
+        Use this for UI / dropdowns / debugging.
         """
         return list(self.font_map.keys())
 
     def get_fontprop(self, fontname):
         """
-        Get a `matplotlib.font_manager.FontProperties` for a specific font,
-        without switching the global rcParams.
+        Return a matplotlib.font_manager.FontProperties
+        object for the given font.
 
-        This is useful when you want:
-            - One global default font via `set_font("Futura ND Book")`,
-            - but override just a single label with a different font.
+        This does NOT modify global rcParams.
+        It's meant for per-label overrides,
+        e.g.:
 
-        Example
-        -------
-        >>> pfm = PlotFontManager()
-        >>> en = pfm.get_fontprop("Futura ND Book")
-        >>> jp = pfm.get_fontprop("Hiragino")
-        >>> import matplotlib.pyplot as plt
-        >>> plt.title("Mixed languages", fontproperties=en)
-        >>> plt.ylabel("Sample index", fontproperties=jp)
-
-        Parameters
-        ----------
-        fontname : str
-            Logical font name.
+            pfm = PlotFontManager()
+            jp = pfm.get_fontprop("Hiragino")
+            plt.ylabel("サンプル番号", fontproperties=jp)
 
         Returns
         -------
         matplotlib.font_manager.FontProperties
-            A FontProperties instance pointing to that font file.
         """
         path = self._resolve_path(fontname)
         return fm.FontProperties(fname=path)
-
