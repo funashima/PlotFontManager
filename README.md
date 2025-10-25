@@ -220,6 +220,26 @@ Useful for local overrides on specific labels or text elements.
 
 3. Every plot in the paper / slide deck / poster matches the lab branding automatically.
 
+
+
+## Bootstrapping `pfm.json` automatically
+
+We ship a small helper script `pfm_build_map.py`.
+It calls `fc-list`, extracts available font families and their file paths,
+and prints a ready-to-edit `pfm.json` mapping.
+
+```bash
+python pfm_build_map.py --filter "Futura|Helvetica|Hiragino" > pfm.json
+```
+
+Then you can load `PlotFontManager()` and it will automatically merge that `pfm.json` into its internal map at import time, so you can immediately do:
+
+```python
+pfm.set_font("Hiragino")
+```
+
+Clean up the generated file before committing (you usually don't want to expose your entire system font list).
+
 ## License
 
 MIT License
