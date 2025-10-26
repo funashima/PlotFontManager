@@ -25,10 +25,10 @@ This module gives you a small, explicit API instead of “try a dozen rcParams t
 
 ## Installation
 
-For now, just drop `plot_font_manager.py` into your project and import it:
+For now, just drop `PlotFontManager.py` into your project and import it:
 
 ```
-from plot_font_manager import PlotFontManager
+from PlotFontManager import PlotFontManager
 ````
 
 (You can also vendor it as a tiny internal utility package.)
@@ -37,7 +37,7 @@ from plot_font_manager import PlotFontManager
 
 ```python
 import matplotlib.pyplot as plt
-from plot_font_manager import PlotFontManager
+from PlotFontManager import PlotFontManager
 
 pfm = PlotFontManager()
 ```
@@ -63,7 +63,7 @@ Use `get_fontprop()`:
 
 ```python
 import matplotlib.pyplot as plt
-from plot_font_manager import PlotFontManager
+from PlotFontManager import PlotFontManager
 
 pfm = PlotFontManager()
 
@@ -124,7 +124,7 @@ print(pfm.list_available())
 
 You can override or extend the built-in `font_map` without editing the Python code.
 
-If a file named `pfm.json` exists **in the same directory as `plot_font_manager.py`**, it will be loaded at initialization and merged into the font map.
+If a file named `pfm.json` exists **in the same directory as `your_script_file`**, it will be loaded at initialization and merged into the font map.
 
 Example `pfm.json`:
 
@@ -213,7 +213,7 @@ Useful for local overrides on specific labels or text elements.
 2. Everyone else just does:
 
    ```python
-   from plot_font_manager import PlotFontManager
+   from PlotFontManager import PlotFontManager
    pfm = PlotFontManager()
    pfm.set_font("Lab Sans")
    ```

@@ -112,8 +112,7 @@ class PlotFontManager:
         or absolute paths.
         """
         try:
-            module_dir = os.path.dirname(os.path.abspath(__file__))
-            json_path = os.path.join(module_dir, "pfm.json")
+            json_path = os.path.join(".", "pfm.json")
             if not os.path.exists(json_path):
                 return
 
